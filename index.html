@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Farm Rabbit Catcher 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; }
+  canvas { display: block; }
+
+  #ui {
+    position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10;
+    display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 30px;
+  }
+  .ui-box {
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    border: 2px solid rgba(255,255,255,0.15); border-radius: 14px;
+    padding: 12px 24px; color: #fff; font-size: 22px; font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  #timer { font-size: 28px; color: #4fc3f7; }
+  #timer.urgent { color: #ef5350; animation: pulse 0.5s infinite; }
+  #score { color: #81c784; font-size: 26px; }
+
+  #start-screen, #end-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(12px); z-index: 100;
+  }
+  #end-screen { display: none; }
+  .screen-title {
+    font-size: 64px; font-weight: 900; color: #fff;
+    text-shadow: 0 4px 20px rgba(0,0,0,0.6); margin-bottom: 10px;
+  }
+  .screen-sub {
+    font-size: 22px; color: rgba(255,255,255,0.7); margin-bottom: 30px; text-align: center; line-height: 1.6;
+  }
+  .screen-score {
+    font-size: 80px; font-weight: 900; color: #81c784;
+    text-shadow: 0 0 30px rgba(129,199,132,0.5); margin: 10px 0;
+  }
+  .btn {
+    pointer-events: all; cursor: pointer;
+    background: linear-gradient(135deg, #43a047, #2e7d32);
+    border: none; border-radius: 50px; padding: 16px 50px;
+    color: #fff; font-size: 22px; font-weight: 700;
+    box-shadow: 0 6px 25px rgba(46,125,50,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .btn:hover { transform: scale(1.05); box-shadow: 0 8px 35px rgba(46,125,50,0.7); }
+  .btn:active { transform: scale(0.97); }
+
+  #catch-effect {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 48px; font-weight: 900; color: #ffd54f;
+    text-shadow: 0 0 20px rgba(255,213,79,0.8);
+    pointer-events: none; z-index: 50; opacity: 0;
+    transition: none;
+  }
+
+  #controls-hint {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+    border-radius: 12px; padding: 10px 24px;
+    color: rgba(255,255,255,0.7); font-size: 14px; z-index: 10;
+  }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  #mobile-controls {
+    position: fixed; bottom: 30px; left: 0; width: 100%;
+    display: none; justify-content: space-between; padding: 0 20px;
+    pointer-events: none; z-index: 20;
+  }
+  .mobile-dpad {
+    display: grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px 50px;
+    gap: 4px; pointer-events: all;
+  }
+  .dpad-btn {
+    background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 10px; color: #fff; font-size: 22px; display: flex;
+    align-items: center; justify-content: center; user-select: none;
+    -webkit-user-select: none; touch-action: none;
+  }
+  .dpad-btn:active { background: rgba(255,255,255,0.4); }
+  #catch-btn-mobile {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: rgba(255,87,34,0.5); border: 3px solid rgba(255,87,34,0.8);
+    color: #fff; font-size: 14px; font-weight: 700;
+    pointer-events: all; align-self: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div class="ui-box" id="score">0</div>
+  <div class="ui-box" id="timer">0:30</div>
+</div>
+
+<div id="catch-effect">+1</div>
+
+<div id="start-screen">
+  <div class="screen-title">Rabbit Catcher</div>
+  <div class="screen-sub">
+    Поймай как можно больше зайцев за 30 секунд!<br>
+    WASD / Стрелки — движение &nbsp;|&nbsp; Пробел — ловить сеткой
+  </div>
+  <button class="btn" id="start-btn">Начать игру</button>
+</div>
+
+<div id="end-screen">
+  <div class="screen-title">Время вышло!</div>
+  <div class="screen-score" id="final-score">0</div>
+  <div class="screen-sub">зайцев поймано</div>
+  <button class="btn" id="restart-btn">Играть снова</button>
+</div>
+
+<div id="controls-hint">WASD — движение &nbsp;|&nbsp; Пробел — ловить сеткой</div>
+
+<div id="mobile-controls">
+  <div class="mobile-dpad">
+    <div></div><div class="dpad-btn" data-key="w">&#9650;</div><div></div>
+    <div class="dpad-btn" data-key="a">&#9664;</div><div></div><div class="dpad-btn" data-key="d">&#9654;</div>
+    <div></div><div class="dpad-btn" data-key="s">&#9660;</div><div></div>
+  </div>
+  <button id="catch-btn-mobile">СЕТЬ</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  const GAME_DURATION = 30;
+  const FIELD_SIZE = 40;
+  const NUM_RABBITS = 12;
+  const CATCH_RADIUS = 3.0;
+  const CATCH_COOLDOWN = 0.6;
+  const RABBIT_SPEED = 4.5;
+  const PLAYER_SPEED = 8;
+
+  let scene, camera, renderer, clock;
+  let player, playerMixer, playerActions = {};
+  let rabbits = [];
+  let score = 0, timeLeft = GAME_DURATION, gameRunning = false;
+  let catchCooldown = 0, isSwinging = false, swingTime = 0;
+  let keys = {};
+  let sun, ambientLight, particles;
+
+  const scoreEl = document.getElementById('score');
+  const timerEl = document.getElementById('timer');
+  const startScreen = document.getElementById('start-screen');
+  const endScreen = document.getElementById('end-screen');
+  const finalScoreEl = document.getElementById('final-score');
+  const catchEffect = document.getElementById('catch-effect');
+  const mobileControls = document.getElementById('mobile-controls');
+
+  function isMobile() {
+    return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent) || window.innerWidth < 768;
+  }
+
+  function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 50, 90);
+
+    camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 18, 22);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    document.body.appendChild(renderer.domElement);
+
+    clock = new THREE.Clock();
+
+    ambientLight = new THREE.AmbientLight(0xfff5e6, 0.5);
+    scene.add(ambientLight);
+
+    sun = new THREE.DirectionalLight(0xffeedd, 1.2);
+    sun.position.set(20, 30, 15);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 80;
+    sun.shadow.camera.left = -35;
+    sun.shadow.camera.right = 35;
+    sun.shadow.camera.top = 35;
+    sun.shadow.camera.bottom = -35;
+    scene.add(sun);
+
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x556b2f, 0.4);
+    scene.add(hemiLight);
+
+    createFarm();
+    createPlayer();
+    createRabbits();
+    particles = createParticles();
+
+    if (isMobile()) {
+      mobileControls.style.display = 'flex';
+      document.getElementById('controls-hint').style.display = 'none';
+      setupMobileControls();
+    }
+
+    window.addEventListener('resize', onResize);
+    document.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); });
+    document.addEventListener('keyup', e => { keys[e.code] = false; });
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+  }
+
+  function createFarm() {
+    // Ground
+    const groundGeo = new THREE.PlaneGeometry(FIELD_SIZE * 2, FIELD_SIZE * 2, 64, 64);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a7c2e, roughness: 0.9 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Grass patches
+    for (let i = 0; i < 200; i++) {
+      const size = 0.3 + Math.random() * 0.5;
+      const patchGeo = new THREE.CircleGeometry(size, 8);
+      const shade = 0.25 + Math.random() * 0.2;
+      const patchMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(shade * 0.6, shade + 0.1, shade * 0.3),
+        roughness: 1
+      });
+      const patch = new THREE.Mesh(patchGeo, patchMat);
+      patch.rotation.x = -Math.PI / 2;
+      patch.position.set((Math.random() - 0.5) * FIELD_SIZE * 1.8, 0.01, (Math.random() - 0.5) * FIELD_SIZE * 1.8);
+      scene.add(patch);
+    }
+
+    // Dirt path
+    const pathGeo = new THREE.PlaneGeometry(3, FIELD_SIZE * 1.5);
+    const pathMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 1 });
+    const path = new THREE.Mesh(pathGeo, pathMat);
+    path.rotation.x = -Math.PI / 2;
+    path.position.y = 0.02;
+    scene.add(path);
+
+    // Fence
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x8B6914, roughness: 0.8 });
+    const fencePositions = [];
+    for (let i = -FIELD_SIZE; i <= FIELD_SIZE; i += 3) {
+      fencePositions.push([i, FIELD_SIZE, 0]);
+      fencePositions.push([i, -FIELD_SIZE, 0]);
+      fencePositions.push([0, FIELD_SIZE, i]);
+      fencePositions.push([0, -FIELD_SIZE, i]);
+    }
+    fencePositions.forEach(([x, z, _]) => {
+      const isX = Math.abs(x) > Math.abs(z);
+      const postGeo = new THREE.CylinderGeometry(0.08, 0.1, 1.5, 6);
+      const post = new THREE.Mesh(postGeo, fenceMat);
+      post.position.set(x, 0.75, z);
+      post.castShadow = true;
+      scene.add(post);
+    });
+    // Rails
+    [[FIELD_SIZE, 0], [-FIELD_SIZE, 0]].forEach(([z, _]) => {
+      for (let i = -FIELD_SIZE; i < FIELD_SIZE; i += 3) {
+        [0.4, 0.9].forEach(h => {
+          const railGeo = new THREE.BoxGeometry(3, 0.06, 0.06);
+          const rail = new THREE.Mesh(railGeo, fenceMat);
+          rail.position.set(i + 1.5, h, z);
+          rail.castShadow = true;
+          scene.add(rail);
+        });
+      }
+    });
+    [[FIELD_SIZE, 0], [-FIELD_SIZE, 0]].forEach(([x, _]) => {
+      for (let i = -FIELD_SIZE; i < FIELD_SIZE; i += 3) {
+        [0.4, 0.9].forEach(h => {
+          const railGeo = new THREE.BoxGeometry(0.06, 0.06, 3);
+          const rail = new THREE.Mesh(railGeo, fenceMat);
+          rail.position.set(x, h, i + 1.5);
+          rail.castShadow = true;
+          scene.add(rail);
+        });
+      }
+    });
+
+    // Barn
+    const barnGroup = new THREE.Group();
+    const barnBody = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 5, 6),
+      new THREE.MeshStandardMaterial({ color: 0x8B0000, roughness: 0.8 })
+    );
+    barnBody.position.y = 2.5;
+    barnBody.castShadow = true;
+    barnGroup.add(barnBody);
+
+    const roofGeo = new THREE.ConeGeometry(6, 3, 4);
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+    const roof = new THREE.Mesh(roofGeo, roofMat);
+    roof.position.y = 6.5;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    barnGroup.add(roof);
+
+    const doorGeo = new THREE.BoxGeometry(2, 3, 0.1);
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x5C4033, roughness: 0.9 });
+    const door = new THREE.Mesh(doorGeo, doorMat);
+    door.position.set(0, 1.5, 3.05);
+    barnGroup.add(door);
+
+    barnGroup.position.set(-22, 0, -22);
+    scene.add(barnGroup);
+
+    // Hay bales
+    const hayMat = new THREE.MeshStandardMaterial({ color: 0xDAA520, roughness: 1 });
+    for (let i = 0; i < 5; i++) {
+      const hay = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1, 12), hayMat);
+      hay.rotation.z = Math.PI / 2;
+      hay.position.set(-18 + i * 1.5, 0.6, -17);
+      hay.castShadow = true;
+      scene.add(hay);
+    }
+
+    // Trees
+    const treePositions = [
+      [-25, 15], [28, -10], [-20, -25], [22, 20], [-30, -5], [30, 5], [5, -28], [-5, 28]
+    ];
+    treePositions.forEach(([x, z]) => {
+      const treeGroup = new THREE.Group();
+      const trunkGeo = new THREE.CylinderGeometry(0.2, 0.35, 2.5, 8);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5C4033, roughness: 1 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.25;
+      trunk.castShadow = true;
+      treeGroup.add(trunk);
+
+      const crownGeo = new THREE.SphereGeometry(1.8, 8, 6);
+      const crownMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0.1 + Math.random() * 0.1, 0.4 + Math.random() * 0.2, 0.1),
+        roughness: 0.9
+      });
+      const crown = new THREE.Mesh(crownGeo, crownMat);
+      crown.position.y = 3.5;
+      crown.castShadow = true;
+      treeGroup.add(crown);
+      treeGroup.position.set(x, 0, z);
+      scene.add(treeGroup);
+    });
+
+    // Cabbages (rabbit attractors)
+    const cabbageMat = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 0.7 });
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const r = 8 + Math.random() * 5;
+      const cabbage = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), cabbageMat);
+      cabbage.position.set(Math.cos(angle) * r, 0.2, Math.sin(angle) * r);
+      cabbage.scale.y = 0.6;
+      cabbage.castShadow = true;
+      scene.add(cabbage);
+    }
+
+    // Sun visual
+    const sunGeo = new THREE.SphereGeometry(3, 16, 16);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    sunMesh.position.copy(sun.position).normalize().multiplyScalar(80);
+    scene.add(sunMesh);
+  }
+
+  function createPlayer() {
+    player = new THREE.Group();
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5c6a0, roughness: 0.7 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.8 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.9 });
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0xf9a825, roughness: 0.8 });
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 1 });
+
+    // Torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.5), shirtMat);
+    torso.position.y = 1.3;
+    torso.castShadow = true;
+    player.add(torso);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), skinMat);
+    head.position.y = 2.1;
+    head.castShadow = true;
+    player.add(head);
+
+    // Hair
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), hairMat);
+    hair.position.y = 2.18;
+    hair.scale.set(1, 0.5, 1);
+    player.add(hair);
+
+    // Eyes
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    [-0.1, 0.1].forEach(x => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
+      eye.position.set(x, 2.12, 0.27);
+      player.add(eye);
+    });
+
+    // Hat
+    const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.05, 12), hatMat);
+    hatBrim.position.y = 2.35;
+    player.add(hatBrim);
+    const hatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.3, 12), hatMat);
+    hatTop.position.y = 2.5;
+    player.add(hatTop);
+
+    // Legs
+    player.leftLeg = new THREE.Group();
+    player.leftLeg.position.set(-0.2, 0.4, 0);
+    const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.3), pantsMat);
+    leftLegMesh.position.y = -0.1;
+    leftLegMesh.castShadow = true;
+    player.leftLeg.add(leftLegMesh);
+    const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.4), bootMat);
+    leftBoot.position.set(0, -0.5, 0.05);
+    leftBoot.castShadow = true;
+    player.leftLeg.add(leftBoot);
+    player.add(player.leftLeg);
+
+    player.rightLeg = new THREE.Group();
+    player.rightLeg.position.set(0.2, 0.4, 0);
+    const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.3), pantsMat);
+    rightLegMesh.position.y = -0.1;
+    rightLegMesh.castShadow = true;
+    player.rightLeg.add(rightLegMesh);
+    const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.4), bootMat);
+    rightBoot.position.set(0, -0.5, 0.05);
+    rightBoot.castShadow = true;
+    player.rightLeg.add(rightBoot);
+    player.add(player.rightLeg);
+
+    // Arms
+    player.leftArm = new THREE.Group();
+    player.leftArm.position.set(-0.55, 1.6, 0);
+    const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.22), shirtMat);
+    leftArmMesh.position.y = -0.3;
+    leftArmMesh.castShadow = true;
+    player.leftArm.add(leftArmMesh);
+    const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), skinMat);
+    leftHand.position.y = -0.7;
+    player.leftArm.add(leftHand);
+    player.add(player.leftArm);
+
+    player.rightArm = new THREE.Group();
+    player.rightArm.position.set(0.55, 1.6, 0);
+    const rightArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.22), shirtMat);
+    rightArmMesh.position.y = -0.3;
+    rightArmMesh.castShadow = true;
+    player.rightArm.add(rightArmMesh);
+    const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), skinMat);
+    rightHand.position.y = -0.7;
+    player.rightArm.add(rightHand);
+    player.add(player.rightArm);
+
+    // Net
+    const netGroup = new THREE.Group();
+    const stickGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.8, 6);
+    const stickMat = new THREE.MeshStandardMaterial({ color: 0x8B6914, roughness: 0.8 });
+    const stick = new THREE.Mesh(stickGeo, stickMat);
+    stick.position.y = 0.9;
+    netGroup.add(stick);
+
+    const ringGeo = new THREE.TorusGeometry(0.4, 0.025, 8, 16);
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.5 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.y = 1.85;
+    ring.rotation.x = Math.PI / 2;
+    netGroup.add(ring);
+
+    // Net mesh
+    const netGeo = new THREE.ConeGeometry(0.4, 0.6, 12, 1, true);
+    const netMat = new THREE.MeshStandardMaterial({
+      color: 0xdddddd, side: THREE.DoubleSide, transparent: true, opacity: 0.7, wireframe: true
+    });
+    const netMesh = new THREE.Mesh(netGeo, netMat);
+    netMesh.position.y = 1.55;
+    netMesh.rotation.x = Math.PI;
+    netGroup.add(netMesh);
+
+    netGroup.position.set(0.55, 0.6, 0.3);
+    player.net = netGroup;
+    player.add(netGroup);
+
+    // Shadow
+    const shadowGeo = new THREE.CircleGeometry(0.6, 16);
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 });
+    const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowMesh.rotation.x = -Math.PI / 2;
+    shadowMesh.position.y = 0.02;
+    player.add(shadowMesh);
+
+    player.position.set(0, 0, 0);
+    player.walkTime = 0;
+    player.swingTime = 0;
+    scene.add(player);
+  }
+
+  function createRabbitMesh(color) {
+    const group = new THREE.Group();
+    const furMat = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+    const pinkMat = new THREE.MeshStandardMaterial({ color: 0xffaaaa, roughness: 0.8 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+    // Body
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), furMat);
+    body.scale.set(1, 0.8, 1.3);
+    body.position.y = 0.35;
+    body.castShadow = true;
+    group.add(body);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), furMat);
+    head.position.set(0, 0.55, 0.3);
+    head.castShadow = true;
+    group.add(head);
+
+    // Nose
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), pinkMat);
+    nose.position.set(0, 0.52, 0.5);
+    group.add(nose);
+
+    // Eyes
+    [-0.1, 0.1].forEach(x => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
+      eye.position.set(x, 0.58, 0.45);
+      group.add(eye);
+    });
+
+    // Ears
+    group.leftEar = new THREE.Group();
+    const leftEarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.5, 6), furMat);
+    leftEarMesh.position.y = 0.25;
+    leftEarMesh.castShadow = true;
+    group.leftEar.add(leftEarMesh);
+    const leftEarInner = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.45, 6), pinkMat);
+    leftEarInner.position.y = 0.25;
+    leftEarMesh.add(leftEarInner);
+    group.leftEar.position.set(-0.08, 0.7, 0.25);
+    group.add(group.leftEar);
+
+    group.rightEar = new THREE.Group();
+    const rightEarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.5, 6), furMat);
+    rightEarMesh.position.y = 0.25;
+    rightEarMesh.castShadow = true;
+    group.rightEar.add(rightEarMesh);
+    const rightEarInner = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.45, 6), pinkMat);
+    rightEarInner.position.y = 0.25;
+    rightEarMesh.add(rightEarInner);
+    group.rightEar.position.set(0.08, 0.7, 0.25);
+    group.add(group.rightEar);
+
+    // Tail
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }));
+    tail.position.set(0, 0.35, -0.45);
+    tail.castShadow = true;
+    group.add(tail);
+
+    // Legs
+    group.leftFrontLeg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.12), furMat);
+    group.leftFrontLeg.position.set(-0.15, 0.12, 0.15);
+    group.leftFrontLeg.castShadow = true;
+    group.add(group.leftFrontLeg);
+
+    group.rightFrontLeg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.12), furMat);
+    group.rightFrontLeg.position.set(0.15, 0.12, 0.15);
+    group.rightFrontLeg.castShadow = true;
+    group.add(group.rightFrontLeg);
+
+    group.leftBackLeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.2), furMat);
+    group.leftBackLeg.position.set(-0.15, 0.12, -0.2);
+    group.leftBackLeg.castShadow = true;
+    group.add(group.leftBackLeg);
+
+    group.rightBackLeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.2), furMat);
+    group.rightBackLeg.position.set(0.15, 0.12, -0.2);
+    group.rightBackLeg.castShadow = true;
+    group.add(group.rightBackLeg);
+
+    return group;
+  }
+
+  function createRabbits() {
+    const colors = [0xf5f5f5, 0xd2b48c, 0x8B7355, 0xa0a0a0, 0xc0c0c0, 0xe8d5b7];
+    for (let i = 0; i < NUM_RABBITS; i++) {
+      const mesh = createRabbitMesh(colors[i % colors.length]);
+      const angle = Math.random() * Math.PI * 2;
+      const r = 5 + Math.random() * (FIELD_SIZE - 8);
+      mesh.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+
+      const rabbit = {
+        mesh,
+        velocity: new THREE.Vector3(),
+        targetPos: new THREE.Vector3(),
+        speed: RABBIT_SPEED * (0.7 + Math.random() * 0.6),
+        hopTime: Math.random() * Math.PI * 2,
+        hopSpeed: 8 + Math.random() * 4,
+        state: 'idle',
+        stateTimer: Math.random() * 2,
+        caught: false,
+        scareTimer: 0,
+        direction: Math.random() * Math.PI * 2
+      };
+
+      setNewTarget(rabbit);
+      scene.add(mesh);
+      rabbits.push(rabbit);
+    }
+  }
+
+  function setNewTarget(rabbit) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 3 + Math.random() * (FIELD_SIZE - 6);
+    rabbit.targetPos.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+    rabbit.state = 'moving';
+    rabbit.stateTimer = 2 + Math.random() * 4;
+  }
+
+  function scareRabbit(rabbit, fromPos) {
+    if (rabbit.caught) return;
+    const dir = new THREE.Vector3().subVectors(rabbit.mesh.position, fromPos).normalize();
+    rabbit.direction = Math.atan2(dir.x, dir.z);
+    rabbit.state = 'scared';
+    rabbit.stateTimer = 1.5 + Math.random();
+    rabbit.speed = RABBIT_SPEED * 2;
+    rabbit.targetPos.copy(rabbit.mesh.position).add(dir.multiplyScalar(10 + Math.random() * 8));
+    clampToField(rabbit.targetPos);
+  }
+
+  function clampToField(pos) {
+    const limit = FIELD_SIZE - 2;
+    pos.x = Math.max(-limit, Math.min(limit, pos.x));
+    pos.z = Math.max(-limit, Math.min(limit, pos.z));
+  }
+
+  function updateRabbits(dt) {
+    rabbits.forEach(r => {
+      if (r.caught) {
+        // Caught rabbit: roll on ground
+        r.mesh.rotation.z += dt * 8;
+        r.mesh.position.y = Math.max(0, r.mesh.position.y - dt * 2);
+        r.mesh.scale.lerp(new THREE.Vector3(0, 0, 0), dt * 3);
+        if (r.mesh.scale.x < 0.05) {
+          r.mesh.visible = false;
+        }
+        return;
+      }
+
+      r.hopTime += dt * r.hopSpeed;
+      r.stateTimer -= dt;
+
+      if (r.stateTimer <= 0 && r.state !== 'scared') {
+        if (r.state === 'moving' || r.state === 'idle') {
+          if (Math.random() < 0.3) {
+            r.state = 'idle';
+            r.stateTimer = 0.5 + Math.random() * 2;
+            r.speed = 0;
+          } else {
+            setNewTarget(r);
+          }
+        }
+      }
+      if (r.stateTimer <= 0 && r.state === 'scared') {
+        r.speed = RABBIT_SPEED * (0.7 + Math.random() * 0.6);
+        setNewTarget(r);
+      }
+
+      // Move
+      if (r.state === 'moving' || r.state === 'scared') {
+        const toTarget = new THREE.Vector3().subVectors(r.targetPos, r.mesh.position);
+        const dist = toTarget.length();
+        if (dist > 0.5) {
+          r.direction = Math.atan2(toTarget.x, toTarget.z);
+          const moveSpeed = Math.min(r.speed, dist / dt);
+          r.velocity.x = (toTarget.x / dist) * moveSpeed;
+          r.velocity.z = (toTarget.z / dist) * moveSpeed;
+        } else {
+          if (r.state !== 'scared') setNewTarget(r);
+          else {
+            r.state = 'idle';
+            r.stateTimer = 0.5 + Math.random();
+          }
+        }
+      } else {
+        r.velocity.x *= 0.9;
+        r.velocity.z *= 0.9;
+      }
+
+      r.mesh.position.x += r.velocity.x * dt;
+      r.mesh.position.z += r.velocity.z * dt;
+      clampToField(r.mesh.position);
+
+      // Face direction
+      const targetRot = r.direction;
+      let diff = targetRot - r.mesh.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      r.mesh.rotation.y += diff * dt * 8;
+
+      // Hop animation
+      const speed = Math.sqrt(r.velocity.x ** 2 + r.velocity.z ** 2);
+      if (speed > 0.5) {
+        r.mesh.position.y = Math.abs(Math.sin(r.hopTime)) * 0.3;
+        const hopAngle = Math.sin(r.hopTime) * 0.3;
+        if (r.leftBackLeg) r.leftBackLeg.rotation.x = hopAngle;
+        if (r.rightBackLeg) r.rightBackLeg.rotation.x = -hopAngle;
+        if (r.leftFrontLeg) r.leftFrontLeg.rotation.x = -hopAngle * 0.5;
+        if (r.rightFrontLeg) r.rightFrontLeg.rotation.x = hopAngle * 0.5;
+      } else {
+        r.mesh.position.y = 0;
+        // Idle ear twitch
+        if (r.leftEar) r.leftEar.rotation.z = Math.sin(r.hopTime * 0.3) * 0.1;
+        if (r.rightEar) r.rightEar.rotation.z = -Math.sin(r.hopTime * 0.3 + 1) * 0.1;
+      }
+
+      // Ear animation based on state
+      if (r.leftEar && r.state === 'scared') {
+        r.leftEar.rotation.z = -0.3;
+        r.rightEar.rotation.z = 0.3;
+      }
+    });
+  }
+
+  function updatePlayer(dt) {
+    if (!gameRunning) return;
+
+    let moveX = 0, moveZ = 0;
+    if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+    if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+    if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+    const isMoving = moveX !== 0 || moveZ !== 0;
+
+    if (isMoving) {
+      const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+      moveX /= len;
+      moveZ /= len;
+
+      const targetAngle = Math.atan2(moveX, moveZ);
+      let angleDiff = targetAngle - player.rotation.y;
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      player.rotation.y += angleDiff * dt * 12;
+
+      player.position.x += moveX * PLAYER_SPEED * dt;
+      player.position.z += moveZ * PLAYER_SPEED * dt;
+
+      const limit = FIELD_SIZE - 1;
+      player.position.x = Math.max(-limit, Math.min(limit, player.position.x));
+      player.position.z = Math.max(-limit, Math.min(limit, player.position.z));
+
+      player.walkTime += dt * 12;
+
+      // Walk animation
+      const legSwing = Math.sin(player.walkTime) * 0.6;
+      player.leftLeg.rotation.x = legSwing;
+      player.rightLeg.rotation.x = -legSwing;
+      player.leftArm.rotation.x = -legSwing * 0.5;
+      player.rightArm.rotation.x = legSwing * 0.5;
+
+      // Body bob
+      player.position.y = Math.abs(Math.sin(player.walkTime * 2)) * 0.08;
+    } else {
+      player.leftLeg.rotation.x *= 0.85;
+      player.rightLeg.rotation.x *= 0.85;
+      player.leftArm.rotation.x *= 0.85;
+      player.rightArm.rotation.x *= 0.85;
+      player.position.y *= 0.85;
+    }
+
+    // Net swing
+    catchCooldown -= dt;
+    if ((keys['Space'] || player.netCatching) && catchCooldown <= 0 && !isSwinging) {
+      isSwinging = true;
+      swingTime = 0;
+      catchCooldown = CATCH_COOLDOWN;
+      player.netCatching = false;
+    }
+
+    if (isSwinging) {
+      swingTime += dt;
+      const t = swingTime / 0.4;
+      if (t < 1) {
+        const swingAngle = Math.sin(t * Math.PI) * -1.8;
+        player.net.rotation.x = swingAngle;
+        player.net.rotation.z = Math.sin(t * Math.PI * 2) * 0.3;
+        player.rightArm.rotation.x = -0.5 + swingAngle * 0.5;
+
+        if (t > 0.3 && t < 0.7) {
+          checkCatch();
+        }
+      } else {
+        isSwinging = false;
+        player.net.rotation.x = 0;
+        player.net.rotation.z = 0;
+      }
+    }
+
+    // Update camera
+    const camTarget = new THREE.Vector3(
+      player.position.x,
+      player.position.y + 1,
+      player.position.z
+    );
+    const camOffset = new THREE.Vector3(0, 16, 18);
+    const desiredPos = camTarget.clone().add(camOffset);
+    camera.position.lerp(desiredPos, dt * 5);
+    const lookTarget = camTarget.clone().add(new THREE.Vector3(0, 0, -2));
+    camera.lookAt(lookTarget);
+  }
+
+  function checkCatch() {
+    const playerPos = player.position.clone();
+    const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+    const catchPos = playerPos.clone().add(forward.multiplyScalar(CATCH_RADIUS * 0.7));
+
+    rabbits.forEach(r => {
+      if (r.caught) return;
+      const dist = catchPos.distanceTo(r.mesh.position);
+      if (dist < CATCH_RADIUS) {
+        r.caught = true;
+        score++;
+        scoreEl.textContent = score;
+        showCatchEffect();
+      }
+    });
+  }
+
+  function showCatchEffect() {
+    catchEffect.style.opacity = '1';
+    catchEffect.style.transform = 'translate(-50%, -50%) scale(1.5)';
+    catchEffect.textContent = '+1';
+    let startTime = performance.now();
+    function anim(now) {
+      const t = (now - startTime) / 600;
+      if (t >= 1) {
+        catchEffect.style.opacity = '0';
+        return;
+      }
+      catchEffect.style.transform = `translate(-50%, ${-50 - t * 40}%) scale(${1.5 - t * 0.5})`;
+      catchEffect.style.opacity = 1 - t;
+      requestAnimationFrame(anim);
+    }
+    requestAnimationFrame(anim);
+  }
+
+  function startGame() {
+    startScreen.style.display = 'none';
+    endScreen.style.display = 'none';
+    score = 0;
+    timeLeft = GAME_DURATION;
+    scoreEl.textContent = '0';
+    timerEl.textContent = '0:30';
+    timerEl.classList.remove('urgent');
+    gameRunning = true;
+    catchCooldown = 0;
+    isSwinging = false;
+    player.position.set(0, 0, 0);
+    player.rotation.y = 0;
+
+    rabbits.forEach(r => {
+      r.caught = false;
+      r.mesh.visible = true;
+      r.mesh.scale.set(1, 1, 1);
+      r.mesh.rotation.z = 0;
+      r.hopTime = Math.random() * Math.PI * 2;
+      const angle = Math.random() * Math.PI * 2;
+      const rad = 8 + Math.random() * (FIELD_SIZE - 10);
+      r.mesh.position.set(Math.cos(angle) * rad, 0, Math.sin(angle) * rad);
+      setNewTarget(r);
+    });
+  }
+
+  function endGame() {
+    gameRunning = false;
+    finalScoreEl.textContent = score;
+    endScreen.style.display = 'flex';
+  }
+
+  let timerAccum = 0;
+  function updateTimer(dt) {
+    if (!gameRunning) return;
+    timerAccum += dt;
+    if (timerAccum >= 1) {
+      timerAccum -= 1;
+      timeLeft--;
+      const min = Math.floor(timeLeft / 60);
+      const sec = timeLeft % 60;
+      timerEl.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+      if (timeLeft <= 5) timerEl.classList.add('urgent');
+      if (timeLeft <= 0) endGame();
+    }
+  }
+
+  function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  function setupMobileControls() {
+    document.querySelectorAll('.dpad-btn').forEach(btn => {
+      const keyMap = { 'w': 'KeyW', 'a': 'KeyA', 's': 'KeyS', 'd': 'KeyD' };
+      const key = keyMap[btn.dataset.key];
+      btn.addEventListener('touchstart', e => { e.preventDefault(); keys[key] = true; });
+      btn.addEventListener('touchend', e => { e.preventDefault(); keys[key] = false; });
+    });
+    document.getElementById('catch-btn-mobile').addEventListener('touchstart', e => {
+      e.preventDefault();
+      player.netCatching = true;
+    });
+  }
+
+  // Floating particles (butterflies)
+  function createParticles() {
+    const group = new THREE.Group();
+    const colors = [0xffeb3b, 0xff9800, 0xe91e63, 0x03a9f4, 0xffffff];
+    for (let i = 0; i < 15; i++) {
+      const geo = new THREE.PlaneGeometry(0.15, 0.15);
+      const mat = new THREE.MeshBasicMaterial({
+        color: colors[i % colors.length], side: THREE.DoubleSide, transparent: true, opacity: 0.8
+      });
+      const butterfly = new THREE.Mesh(geo, mat);
+      butterfly.position.set(
+        (Math.random() - 0.5) * FIELD_SIZE * 1.5,
+        1.5 + Math.random() * 2,
+        (Math.random() - 0.5) * FIELD_SIZE * 1.5
+      );
+      butterfly.userData = {
+        baseY: butterfly.position.y,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random() * 0.5,
+        radius: 5 + Math.random() * 10
+      };
+      group.add(butterfly);
+    }
+    scene.add(group);
+    return group;
+  }
+
+  function updateParticles(time) {
+    if (!particles) return;
+    particles.children.forEach(b => {
+      const d = b.userData;
+      b.position.y = d.baseY + Math.sin(time * d.speed + d.phase) * 0.5;
+      b.position.x += Math.sin(time * d.speed * 0.5 + d.phase) * 0.01;
+      b.position.z += Math.cos(time * d.speed * 0.3 + d.phase) * 0.01;
+      b.rotation.y = time * d.speed;
+      b.lookAt(camera.position);
+    });
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const time = clock.getElapsedTime();
+
+    updateTimer(dt);
+    updatePlayer(dt);
+    updateRabbits(dt);
+    updateParticles(time);
+
+    renderer.render(scene, camera);
+  }
+
+  init();
+  animate();
+})();
+</script>
+</body>
+</html>
